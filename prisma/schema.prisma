@@ -1,0 +1,223 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  BUSINESS_OWNER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAID
+  FAILED
+  CANCELLED
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  passwordHash    String
+  isEmailVerified Boolean  @default(false)
+  role            UserRole @default(CUSTOMER)
+  tenantId        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant            Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  refreshTokens     RefreshToken[]
+  invoices          Invoice[]
+  orders            Order[]
+  emailVerification EmailVerification?
+  passwordReset     PasswordReset?
+
+  @@index([tenantId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  products Product[]
+  invoices Invoice[]
+}
+
+model Product {
+  id          String  @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  price       Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceItems InvoiceItem[]
+  images       ProductImage[]
+  orderItems   OrderItem[]
+
+  @@index([tenantId])
+}
+
+model ProductImage {
+  id        String @id @default(cuid())
+  productId String
+  url       String
+  order     Int    @default(0) // For sorting images (main image = 0)
+
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([order])
+}
+
+model Order {
+  id               String      @id @default(cuid())
+  customerId       String
+  totalAmount      Decimal     @db.Decimal(10, 2)
+  status           OrderStatus @default(PENDING_PAYMENT)
+  chapaTxRef       String?     @unique
+  chapaCheckoutUrl String?
+  paidAt           DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer User        @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
+  invoices Invoice[] // After payment, split into seller invoices
+
+  @@index([customerId])
+  @@index([chapaTxRef])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  FAILED
+  CANCELLED
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  tenantId      String
+  customerId    String
+  orderId       String? // Link to master order (nullable for backward compatibility)
+  invoiceNumber String        @unique
+  status        InvoiceStatus @default(DRAFT)
+  totalAmount   Decimal       @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  customer      User           @relation(fields: [customerId], references: [id])
+  order         Order?         @relation(fields: [orderId], references: [id])
+  items         InvoiceItem[]
+  webhookEvents WebhookEvent[]
+
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([orderId])
+}
+
+model InvoiceItem {
+  id        String  @id @default(cuid())
+  invoiceId String
+  productId String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+}
+
+model WebhookEvent {
+  id                   String  @id @default(cuid())
+  transactionReference String  @unique
+  status               String
+  rawPayload           Json
+  invoiceId            String?
+
+  processedAt DateTime @default(now())
+
+  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([transactionReference])
+}
+
+model EmailVerification {
+  id         String   @id @default(cuid())
+  email      String   @unique // Only one active verification per email
+  otp        String // 6-digit code
+  attempts   Int      @default(0) // Track failed guesses
+  expiresAt  DateTime // OTP expires in 10 minutes
+  lastSentAt DateTime // For 2-minute cooldown
+  userId     String   @unique // Link to the user being verified
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model PasswordReset {
+  id         String   @id @default(cuid())
+  email      String // Allow multiple reset requests (but only latest is valid)
+  otp        String // 6-digit code
+  attempts   Int      @default(0) // Track failed guesses
+  expiresAt  DateTime // OTP expires in 10 minutes
+  lastSentAt DateTime // For 2-minute cooldown
+  userId     String   @unique // Link to the user
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+}
