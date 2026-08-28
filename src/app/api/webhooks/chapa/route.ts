@@ -202,7 +202,7 @@ async function splitOrderIntoSellerInvoices(
 
     await tx.invoice.create({
       data: {
-        tenantId,
+        tenantId: tenant.id,
         customerId: order.customerId,
         orderId: order.id,
         invoiceNumber,
