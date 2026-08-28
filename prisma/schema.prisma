@@ -104,8 +104,7 @@ model Order {
   totalAmount      Decimal     @db.Decimal(10, 2)
   status           OrderStatus @default(PENDING_PAYMENT)
   chapaTxRef       String?     @unique
-  chapaCheckoutUrl String?
-  paidAt           DateTime?
+  
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -141,22 +140,24 @@ enum OrderStatus {
 }
 
 model Invoice {
-  id            String        @id @default(cuid())
-  tenantId      String
-  customerId    String
-  orderId       String? // Link to master order (nullable for backward compatibility)
-  invoiceNumber String        @unique
-  status        InvoiceStatus @default(DRAFT)
-  totalAmount   Decimal       @db.Decimal(10, 2)
+  id               String        @id @default(cuid())
+  tenantId         String
+  customerId       String
+  orderId          String?       
+  invoiceNumber    String        @unique
+  status           InvoiceStatus @default(DRAFT)
+  totalAmount      Decimal       @db.Decimal(10, 2)
+  chapaTxRef       String?       @unique 
+  chapaCheckoutUrl String?       
+  
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  customer      User           @relation(fields: [customerId], references: [id])
-  order         Order?         @relation(fields: [orderId], references: [id])
-  items         InvoiceItem[]
-  webhookEvents WebhookEvent[]
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  customer         User           @relation(fields: [customerId], references: [id])
+  order            Order?         @relation(fields: [orderId], references: [id])
+  items            InvoiceItem[]
+  webhookEvents    WebhookEvent[]
 
   @@index([tenantId])
   @@index([customerId])

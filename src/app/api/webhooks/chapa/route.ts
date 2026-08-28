@@ -1,17 +1,9 @@
 // src/app/api/webhooks/chapa/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@/generated/prisma/client';
 import crypto from 'crypto';
 
-/**
- * Chapa Webhook Handler
- * 
- * This endpoint is called by Chapa when a payment status changes.
- * It MUST be:
- * 1. Idempotent - safe to call multiple times
- * 2. Secure - verify the webhook signature (if configured)
- * 3. Atomic - use transactions to prevent race conditions
- */
 export async function POST(request: NextRequest) {
   let rawBody: string;
 
@@ -22,15 +14,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  // Verify webhook signature
   const webhookSecret = process.env.CHAPA_WEBHOOK_SECRET;
   if (webhookSecret) {
     const signature = request.headers.get('x-chapa-signature');
-    
-    if (!signature) {
-      console.error('Missing webhook signature');
-      // We still process it for local testing, but in production you might want to return 401
-    } else {
+    if (signature) {
       const expectedSignature = crypto
         .createHmac('sha256', webhookSecret)
         .update(rawBody)
@@ -51,7 +38,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // Type guard to ensure payload has the fields we need
   if (typeof payload !== 'object' || payload === null) {
     return NextResponse.json({ error: 'Invalid payload structure' }, { status: 400 });
   }
@@ -67,88 +53,224 @@ export async function POST(request: NextRequest) {
   console.log(`Chapa webhook received: tx_ref=${tx_ref}, status=${status}`);
 
   try {
-    // Check if we already processed this exact event
     const existingEvent = await prisma.webhookEvent.findUnique({
       where: { transactionReference: tx_ref },
     });
 
-    // If we've seen this exact status before, return success immediately (idempotent)
     if (existingEvent && existingEvent.status === status) {
       console.log(`Webhook already processed: ${tx_ref} with status ${status}`);
       return NextResponse.json({ message: 'Webhook already processed' });
     }
 
-    // Find the invoice by transaction reference
-    const invoice = await prisma.invoice.findUnique({
-      where: { chapaTxRef: tx_ref },
-    });
+    //  Cast payload to Prisma's accepted JSON type
+    const jsonPayload = payload as Prisma.InputJsonValue;
 
-    if (!invoice) {
-      console.error(`Invoice not found for tx_ref: ${tx_ref}`);
-      // Return 200 to prevent Chapa from endlessly retrying an invoice that doesn't exist
-      return NextResponse.json({ message: 'Invoice not found' });
+    // Check if this is an Order payment (starts with "FV-ORD-")
+    if (tx_ref.startsWith('FV-ORD-')) {
+      await handleOrderWebhook(tx_ref, status, jsonPayload, existingEvent);
+    } else {
+      // Legacy invoice payment (for backward compatibility)
+      await handleInvoiceWebhook(tx_ref, status, jsonPayload, existingEvent);
     }
 
-    // Map Chapa status to our InvoiceStatus
-    let newStatus: 'PAID' | 'FAILED' | 'CANCELLED' | 'PENDING_PAYMENT';
-
-    switch (status) {
-      case 'success':
-        newStatus = 'PAID';
-        break;
-      case 'failed':
-        newStatus = 'FAILED';
-        break;
-      case 'cancelled':
-        newStatus = 'CANCELLED';
-        break;
-      case 'pending':
-        newStatus = 'PENDING_PAYMENT';
-        break;
-      default:
-        console.warn(`Unknown Chapa status: ${status}`);
-        newStatus = 'PENDING_PAYMENT';
-    }
-
-    // ATOMIC UPDATE: Save webhook event + update invoice in a single transaction
-    await prisma.$transaction(async (tx) => {
-      if (existingEvent) {
-        // Update existing event with new status (e.g., if it went from pending to success)
-        await tx.webhookEvent.update({
-          where: { id: existingEvent.id },
-          data: {
-            status,
-            rawPayload: payload,
-            processedAt: new Date(),
-          },
-        });
-      } else {
-        // Create new webhook event record
-        await tx.webhookEvent.create({
-          data: {
-            transactionReference: tx_ref,
-            status,
-            rawPayload: payload,
-            invoiceId: invoice.id,
-            processedAt: new Date(),
-          },
-        });
-      }
-
-      // Update invoice status
-      await tx.invoice.update({
-        where: { id: invoice.id },
-        data: { status: newStatus },
-      });
-    });
-
-    console.log(` Invoice ${invoice.id} updated to status: ${newStatus}`);
-
-    // Always return 200 to Chapa to acknowledge receipt
     return NextResponse.json({ message: 'Webhook processed successfully' });
   } catch (error) {
-    console.error(' Webhook processing error:', error);
-    // Return 500 so Chapa will retry the webhook later
+    console.error('❌ Webhook processing error:', error);
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   }
+}
+
+// Explicitly define the type of an Order with its items
+type OrderWithItems = Prisma.OrderGetPayload<{
+  include: {
+    items: {
+      include: {
+        product: {
+          select: { tenantId: true; name: true; price: true };
+        };
+      };
+    };
+  };
+}>;
+
+async function handleOrderWebhook(
+  txRef: string,
+  status: string,
+  payload: Prisma.InputJsonValue,
+  existingEvent: { id: string; status: string } | null
+) {
+  const order = await prisma.order.findUnique({
+    where: { chapaTxRef: txRef },
+    include: {
+      items: {
+        include: {
+          product: {
+            select: { tenantId: true, name: true, price: true },
+          },
+        },
+      },
+    },
+  }) as OrderWithItems | null;
+
+  if (!order) {
+    console.error(`Order not found for tx_ref: ${txRef}`);
+    return;
+  }
+
+  let newStatus: 'PAID' | 'FAILED' | 'CANCELLED' | 'PENDING_PAYMENT';
+
+  switch (status) {
+    case 'success':
+      newStatus = 'PAID';
+      break;
+    case 'failed':
+      newStatus = 'FAILED';
+      break;
+    case 'cancelled':
+      newStatus = 'CANCELLED';
+      break;
+    default:
+      newStatus = 'PENDING_PAYMENT';
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (existingEvent) {
+      await tx.webhookEvent.update({
+        where: { id: existingEvent.id },
+        data: { status, rawPayload: payload, processedAt: new Date() },
+      });
+    } else {
+      await tx.webhookEvent.create({
+        data: {
+          transactionReference: txRef,
+          status,
+          rawPayload: payload,
+          processedAt: new Date(),
+        },
+      });
+    }
+
+    await tx.order.update({
+      where: { id: order.id },
+      data: { 
+        status: newStatus,
+        paidAt: newStatus === 'PAID' ? new Date() : null,
+      },
+    });
+
+    if (newStatus === 'PAID') {
+      await splitOrderIntoSellerInvoices(tx, order);
+    }
+  });
+
+  console.log(`Order ${order.id} updated to status: ${newStatus}`);
+}
+
+async function splitOrderIntoSellerInvoices(
+  tx: Prisma.TransactionClient,
+  order: OrderWithItems
+) {
+    const itemsByTenant = new Map<string, typeof order.items>();
+    type OrderItemType = OrderWithItems['items'][number];
+
+  for (const orderItem of order.items) {
+    const tenantId = orderItem.product.tenantId;
+    if (!itemsByTenant.has(tenantId)) {
+      itemsByTenant.set(tenantId, []);
+    }
+    itemsByTenant.get(tenantId)!.push(orderItem);
+  }
+
+  for (const [tenantId, tenantItems] of itemsByTenant.entries()) {
+    const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) continue;
+
+    let totalAmount = 0;
+    const invoiceItemsData = tenantItems.map((orderItem: OrderItemType) => {
+      const unitPrice = Number(orderItem.product.price);
+      const lineTotal = unitPrice * orderItem.quantity;
+      totalAmount += lineTotal;
+
+      return {
+        productId: orderItem.productId,
+        quantity: orderItem.quantity,
+        unitPrice: unitPrice.toFixed(2),
+      };
+    });
+
+    const invoiceNumber = `INV-${tenant.slug}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+    await tx.invoice.create({
+      data: {
+        tenantId,
+        customerId: order.customerId,
+        orderId: order.id,
+        invoiceNumber,
+        status: 'PAID',
+        totalAmount: totalAmount.toFixed(2),
+        items: { create: invoiceItemsData },
+      },
+    });
+
+    console.log(`Created seller invoice for tenant ${tenant.name}: ${invoiceNumber}`);
+  }
+}
+
+//  Added back for legacy invoice payments.
+async function handleInvoiceWebhook(
+  txRef: string,
+  status: string,
+  payload: Prisma.InputJsonValue,
+  existingEvent: { id: string; status: string } | null
+) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { chapaTxRef: txRef },
+  });
+
+  if (!invoice) {
+    console.error(`Invoice not found for tx_ref: ${txRef}`);
+    return;
+  }
+
+  let newStatus: 'PAID' | 'FAILED' | 'CANCELLED' | 'PENDING_PAYMENT';
+
+  switch (status) {
+    case 'success':
+      newStatus = 'PAID';
+      break;
+    case 'failed':
+      newStatus = 'FAILED';
+      break;
+    case 'cancelled':
+      newStatus = 'CANCELLED';
+      break;
+    default:
+      newStatus = 'PENDING_PAYMENT';
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (existingEvent) {
+      await tx.webhookEvent.update({
+        where: { id: existingEvent.id },
+        data: { status, rawPayload: payload, processedAt: new Date() },
+      });
+    } else {
+      await tx.webhookEvent.create({
+        data: {
+          transactionReference: txRef,
+          status,
+          rawPayload: payload,
+          invoiceId: invoice.id,
+          processedAt: new Date(),
+        },
+      });
+    }
+
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { status: newStatus },
+    });
+  });
+
+  console.log(`Invoice ${invoice.id} updated to status: ${newStatus}`);
 }
