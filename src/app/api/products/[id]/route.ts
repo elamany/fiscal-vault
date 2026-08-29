@@ -9,12 +9,12 @@ const updateProductSchema = z.object({
   description: z.string().max(2000).optional(),
   price: z.number().positive().optional(),
   imageUrls: z.array(z.url()).max(10).optional(),
+  stock: z.number().int().min(0).optional(),
 });
 /**
  * GET /api/products/:id
  * Business owner: Only if the product belongs to their tenant
  */
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -46,7 +46,6 @@ export async function GET(
  * PATCH /api/products/:id
  * Business owner: Only if the product belongs to their tenant
  */
-
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -73,9 +72,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    const { name, description, price, imageUrls } = validation.data;
+    const { name, description, price, imageUrls, stock } = validation.data;
 
-    // Update product and images in a transaction
+    // Update product in a transaction
     const product = await prisma.$transaction(async (tx) => {
       // Update product fields
       const updatedProduct = await tx.product.update({
@@ -84,6 +83,7 @@ export async function PATCH(
           ...(name !== undefined && { name }),
           ...(description !== undefined && { description }),
           ...(price !== undefined && { price: price.toFixed(2) }),
+          ...(stock !== undefined && { stock }),
         },
       });
 
@@ -123,12 +123,12 @@ export async function PATCH(
   }
 }
 
+
 /**
  * DELETE /api/products/:id
  * Business owner: Only if the product belongs to their tenant
  * AND the product isn't referenced in any invoices (data integrity)
  */
-
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

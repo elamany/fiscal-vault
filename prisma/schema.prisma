@@ -28,6 +28,8 @@ enum InvoiceStatus {
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
+  firstName       String    
+  lastName        String
   passwordHash    String
   isEmailVerified Boolean  @default(false)
   role            UserRole @default(CUSTOMER)
@@ -39,6 +41,7 @@ model User {
   refreshTokens     RefreshToken[]
   invoices          Invoice[]
   orders            Order[]
+  cart              Cart? 
   emailVerification EmailVerification?
   passwordReset     PasswordReset?
 
@@ -46,12 +49,16 @@ model User {
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
+  id        String    @id @default(cuid())
+  token     String    @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  revokedAt DateTime? 
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([revokedAt]) 
 }
 
 model Tenant {
@@ -72,6 +79,7 @@ model Product {
   name        String
   description String?
   price       Decimal @db.Decimal(10, 2)
+  stock       Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -80,6 +88,7 @@ model Product {
   invoiceItems InvoiceItem[]
   images       ProductImage[]
   orderItems   OrderItem[]
+  cartItems    CartItem[]
 
   @@index([tenantId])
 }
@@ -98,21 +107,49 @@ model ProductImage {
   @@index([order])
 }
 
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+
+  @@index([userId])
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  productId String
+  quantity  Int     @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId]) // Prevent duplicate items
+  @@index([cartId])
+}
+
 model Order {
   id               String      @id @default(cuid())
   customerId       String
   totalAmount      Decimal     @db.Decimal(10, 2)
   status           OrderStatus @default(PENDING_PAYMENT)
   chapaTxRef       String?     @unique
-  chapaCheckoutUrl String?
-  paidAt           DateTime?
+  chapaCheckoutUrl String?     // Stores the Chapa link
+  paidAt           DateTime?   // Used by the webhook when payment succeeds
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  expiresAt        DateTime?
 
-  customer User        @relation(fields: [customerId], references: [id])
-  items    OrderItem[]
-  invoices Invoice[] // After payment, split into seller invoices
+  customer         User        @relation(fields: [customerId], references: [id])
+  items            OrderItem[]
+  invoices         Invoice[]   // After payment, split into seller invoices
 
   @@index([customerId])
   @@index([chapaTxRef])
@@ -138,16 +175,19 @@ enum OrderStatus {
   PAID
   FAILED
   CANCELLED
+  EXPIRED
 }
 
 model Invoice {
-  id            String        @id @default(cuid())
-  tenantId      String
-  customerId    String
-  orderId       String? // Link to master order (nullable for backward compatibility)
-  invoiceNumber String        @unique
-  status        InvoiceStatus @default(DRAFT)
-  totalAmount   Decimal       @db.Decimal(10, 2)
+  id               String        @id @default(cuid())
+  tenantId         String
+  customerId       String
+  orderId          String?
+  invoiceNumber    String        @unique
+  status           InvoiceStatus @default(DRAFT)
+  totalAmount      Decimal       @db.Decimal(10, 2)
+  chapaTxRef       String?       @unique
+  chapaCheckoutUrl String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

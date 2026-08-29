@@ -10,6 +10,8 @@ import { checkRateLimit } from '@/lib/rate-limit';
 const registerSchema = z.object({
   email: z.email('Invalid email address').transform((val) => val.toLowerCase()),
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  firstName: z.string().min(1, 'First name is required'), 
+  lastName: z.string().min(1, 'Last name is required'),
   role: z.enum(['CUSTOMER', 'BUSINESS_OWNER']),
   tenantName: z.string().min(2).optional(),
   tenantSlug: z.string().min(2).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens only').transform((val) => val.toLowerCase()).optional(),
@@ -27,7 +29,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password, role, tenantName, tenantSlug } = validation.data;
+    const { email, password, role,firstName, lastName, tenantName, tenantSlug } = validation.data;
 
     // Rate limit 50 reg per hour
     const ip = request.headers.get('x-forwarded-for') || 'unknown';
@@ -109,6 +111,8 @@ export async function POST(request: NextRequest) {
       data: {
         email,
         passwordHash,
+        firstName: firstName.trim(),  
+        lastName: lastName.trim(),
         role,
         tenantId,
         isEmailVerified: false,
@@ -133,8 +137,9 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json(
       {
         message: 'Registration successful. Please check your email for the verification code.',
-        redirectTo: '/verify-email',
-        userId: user.id,
+        //redirectTo: '/verify-email',
+        //userId: user.id,
+        //cooldown:120
       },
       { status: 201 }
     );

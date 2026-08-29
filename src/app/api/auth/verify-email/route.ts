@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Rate limit
+    /*// Rate limit
     const rateLimit = await checkRateLimit(`verify-otp:${email}`, 6, 10 * 60 * 1000);
     
     if (!rateLimit.allowed) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         { error: 'Too many incorrect attempts. Please request a new OTP.' },
         { status: 429, headers: { 'Retry-After': rateLimit.retryAfter?.toString() || '600' } }
       );
-    }
+    }*/
 
     // Find verification record
     const verification = await prisma.emailVerification.findUnique({
@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'OTP has expired. Please request a new one.' },
         { status: 410 }
+      );
+    }
+
+    if (verification.attempts==6) {
+      return NextResponse.json(
+        { error: 'Too many incorrect attempts. Please request a new OTP' },
+        { status: 429 }
       );
     }
 
