@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/chapa`,
       returnUrl: `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?txRef=${txRef}`,
       customization: {
-        title: 'FiscalVault Order',
+        title: 'FiscalVault Order'.substring(0, 12),
         description: `Order ${order.id.substring(0, 12)}`,
       },
     });

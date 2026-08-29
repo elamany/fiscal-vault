@@ -1,4 +1,3 @@
-// src/app/api/webhooks/chapa/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@/generated/prisma/client';
@@ -117,6 +116,11 @@ async function handleOrderWebhook(
     return;
   }
 
+  if (order.status === 'EXPIRED') {
+    console.log(` Order ${order.id} was already expired. Ignoring webhook.`);
+    return;
+  }
+
   let newStatus: 'PAID' | 'FAILED' | 'CANCELLED' | 'PENDING_PAYMENT';
 
   switch (status) {
@@ -159,7 +163,24 @@ async function handleOrderWebhook(
     });
 
     if (newStatus === 'PAID') {
+      // Stock is already reserved (decremented). Just create invoices.
       await splitOrderIntoSellerInvoices(tx, order);
+    } 
+    else if (newStatus === 'FAILED' || newStatus === 'CANCELLED') {
+      // RELEASE STOCK: Read from OrderItem and increment product stock back
+      const orderItems = await tx.orderItem.findMany({
+        where: { orderId: order.id },
+        select: { productId: true, quantity: true },
+      });
+
+      for (const item of orderItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+      }
+      
+      console.log(`Released reserved stock for cancelled/failed order ${order.id}`);
     }
   });
 

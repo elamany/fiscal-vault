@@ -9,6 +9,7 @@ const createProductSchema = z.object({
   description: z.string().max(2000).optional(),
   price: z.number().positive('Price must be positive'),
   imageUrls: z.array(z.url('Must be a valid URL')).max(10).optional(), 
+  stock: z.number().int().min(0, 'Stock cannot be negative').default(0), 
 });
 
 /**
@@ -50,11 +51,11 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireBusinessOwner();
 
-    //upto 150 posts per hour
+    // upto 200 posts per hour
     const ip = request.headers.get('x-forwarded-for') || 'unknown';
     const rateLimit = await checkRateLimit(
       `create-product:${ip}-${user.id}`,
-      150,
+      200,
       60 * 60 * 1000
     );
 
@@ -75,15 +76,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, description, price, imageUrls } = validation.data;
+    const { name, description, price, imageUrls, stock } = validation.data;
 
-    // Create product with images in a transaction
+    // Create product in a transaction
     const product = await prisma.$transaction(async (tx) => {
       const newProduct = await tx.product.create({
         data: {
           name,
           description,
           price: price.toFixed(2),
+          stock, 
           tenantId: user.tenantId!,
         },
       });

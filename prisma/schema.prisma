@@ -39,6 +39,7 @@ model User {
   refreshTokens     RefreshToken[]
   invoices          Invoice[]
   orders            Order[]
+  cart              Cart? 
   emailVerification EmailVerification?
   passwordReset     PasswordReset?
 
@@ -72,6 +73,7 @@ model Product {
   name        String
   description String?
   price       Decimal @db.Decimal(10, 2)
+  stock       Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -80,6 +82,7 @@ model Product {
   invoiceItems InvoiceItem[]
   images       ProductImage[]
   orderItems   OrderItem[]
+  cartItems    CartItem[]
 
   @@index([tenantId])
 }
@@ -98,19 +101,49 @@ model ProductImage {
   @@index([order])
 }
 
-model Order {
-  id          String      @id @default(cuid())
-  customerId  String
-  totalAmount Decimal     @db.Decimal(10, 2)
-  status      OrderStatus @default(PENDING_PAYMENT)
-  chapaTxRef  String?     @unique
-
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  customer User        @relation(fields: [customerId], references: [id])
-  items    OrderItem[]
-  invoices Invoice[] // After payment, split into seller invoices
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+
+  @@index([userId])
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  productId String
+  quantity  Int     @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId]) // Prevent duplicate items
+  @@index([cartId])
+}
+
+model Order {
+  id               String      @id @default(cuid())
+  customerId       String
+  totalAmount      Decimal     @db.Decimal(10, 2)
+  status           OrderStatus @default(PENDING_PAYMENT)
+  chapaTxRef       String?     @unique
+  chapaCheckoutUrl String?     // Stores the Chapa link
+  paidAt           DateTime?   // Used by the webhook when payment succeeds
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  expiresAt        DateTime?
+
+  customer         User        @relation(fields: [customerId], references: [id])
+  items            OrderItem[]
+  invoices         Invoice[]   // After payment, split into seller invoices
 
   @@index([customerId])
   @@index([chapaTxRef])
@@ -136,6 +169,7 @@ enum OrderStatus {
   PAID
   FAILED
   CANCELLED
+  EXPIRED
 }
 
 model Invoice {
