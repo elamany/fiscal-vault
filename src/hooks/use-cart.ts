@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_PATHS } from '@/constants/api_paths';
 import { useCartStore } from '@/lib/store';
 import { useAuth } from '@/contexts/auth-context';
-import type { CartItem, CartProduct, CartResponse } from '@/types/cart_types';
+import type {  CartProduct, CartResponse } from '@/types/cart_types';
 
 // Fetch cart from database (only for logged-in users)
 export function useCart() {

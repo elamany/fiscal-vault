@@ -1,31 +1,34 @@
-import { useQuery } from '@tanstack/react-query';
-import type { Product } from '@/types/product_types';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { API_PATHS } from '@/constants/api_paths';
 import { safeFetch } from '@/lib/api-error';
+import type { Product } from '@/types/product_types';
 
-export function useProducts(tenantSlug?: string) {
-  return useQuery({
-    queryKey: ['products', tenantSlug || 'all'],
-    queryFn: async () => {
-      const url = tenantSlug 
-        ? API_PATHS.products.byTenant(tenantSlug)
-        : API_PATHS.products.all;
-      
-      const data = await safeFetch<{ products: Product[] }>(url);
-      return data.products;
-    },
-  });
+interface ProductsResponse {
+  products: Product[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+    hasNextPage: boolean;
+  };
 }
 
-export function useProduct(productId: string) {
-  return useQuery({
-    queryKey: ['product', productId],
-    queryFn: async () => {
-      const data = await safeFetch<{ product: Product }>(
-        API_PATHS.products.byId(productId)
-      );
-      return data.product;
+export function useProducts(tenantSlug?: string) {
+  return useInfiniteQuery({
+    queryKey: ['products', tenantSlug || 'all'],
+    queryFn: async ({ pageParam = 1 }) => {
+      const params = new URLSearchParams();
+      if (tenantSlug) params.append('tenant', tenantSlug);
+      params.append('page', String(pageParam));
+      params.append('limit', '12'); // 12 items per page
+      
+      const url = `${API_PATHS.products.all}?${params.toString()}`;
+      return await safeFetch<ProductsResponse>(url);
     },
-    enabled: !!productId,
+    getNextPageParam: (lastPage) => {
+      return lastPage.pagination.hasNextPage ? lastPage.pagination.page + 1 : undefined;
+    },
+    initialPageParam: 1,
   });
 }

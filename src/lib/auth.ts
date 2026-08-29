@@ -3,19 +3,18 @@ import { prisma } from './db';
 import { verifyAccessToken } from './jwt';
 import { getAccessToken } from './cookies';
 import type { JWTPayload } from './jwt';
-import { AuthenticatedUser } from '@/types/auth_types';
-
+import { AuthenticatedUser, UserRole } from '@/types/auth_types';
+import { NextResponse } from 'next/server';
 
 export interface BusinessOwner extends Omit<AuthenticatedUser, 'role' | 'tenantId'> {
   role: 'BUSINESS_OWNER';
   tenantId: string; 
 }
-/**
- * Extracts and verifies the current user from the access token cookie.
- * Returns null if not authenticated.
- * 
- * This is the SINGLE source of truth for authentication across the app.
- */
+
+// ==========================================
+// 1. CORE AUTHENTICATION
+// ==========================================
+
 export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
   try {
     const accessToken = await getAccessToken();
@@ -24,16 +23,15 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
       return null;
     }
 
-    // Verify the token signature and expiry
     const payload: JWTPayload = await verifyAccessToken(accessToken);
 
-    // Fetch the user from the database to ensure they still exist
-    // and haven't been deleted/banned
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: {
         id: true,
         email: true,
+        firstName: true,   // ✅ Matches AuthenticatedUser
+        lastName: true,    // ✅ Matches AuthenticatedUser
         role: true,
         tenantId: true,
         isEmailVerified: true,
@@ -44,27 +42,16 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
       return null;
     }
 
-    // Verify the tenantId in the token matches the database
-    // (prevents privilege escalation if user's role was changed)
     if (user.tenantId !== payload.tenantId || user.role !== payload.role) {
       return null;
     }
 
     return user;
   } catch (error) {
-    // Token is invalid, expired, or tampered with
     return null;
   }
 }
 
-/**
- * Requires authentication. Throws a Response if not authenticated.
- * Use this in API routes that MUST have a logged-in user.
- * 
- * Example:
- *   const user = await requireAuth();
- *   // If we get here, user is definitely authenticated
- */
 export async function requireAuth(): Promise<AuthenticatedUser> {
   const user = await getCurrentUser();
   
@@ -85,10 +72,6 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
   return user;
 }
 
-/**
- * Requires the user to be a BUSINESS_OWNER.
- * Throws a Response if not authorized.
- */
 export async function requireBusinessOwner(): Promise<BusinessOwner> {
   const user = await requireAuth();
   
@@ -100,4 +83,58 @@ export async function requireBusinessOwner(): Promise<BusinessOwner> {
   }
 
   return user as BusinessOwner;
+}
+
+// ==========================================
+// 2. ADDITIONAL HELPERS
+// ==========================================
+
+export async function getOptionalUser(): Promise<AuthenticatedUser | null> {
+  try {
+    return await getCurrentUser();
+  } catch {
+    return null;
+  }
+}
+
+export async function requireRole(allowedRoles: UserRole[]): Promise<AuthenticatedUser> {
+  const user = await requireAuth();
+  
+  if (!allowedRoles.includes(user.role)) {
+    throw new Response(
+      JSON.stringify({ error: `Forbidden: Requires one of roles: ${allowedRoles.join(', ')}` }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  return user;
+}
+
+// ==========================================
+// 3. COOKIE HELPERS
+// ==========================================
+
+export function setAuthCookies(response: NextResponse, accessToken: string, refreshToken?: string): void {
+  response.cookies.set('access_token', accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 15 * 60,
+  });
+
+  if (refreshToken) {
+    response.cookies.set('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60,
+    });
+  }
+}
+
+export function clearAuthCookies(response: NextResponse): void {
+  response.cookies.set('access_token', '', { maxAge: 0, path: '/' });
+  response.cookies.set('refresh_token', '', { maxAge: 0, path: '/' });
 }

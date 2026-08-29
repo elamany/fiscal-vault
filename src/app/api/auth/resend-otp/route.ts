@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     // Read email exclusively from the HttpOnly cookie
     const cookieStore = await cookies();
     const emailFromCookie = cookieStore.get('verification_email')?.value;
+    
 
 
     if (!emailFromCookie) {
@@ -63,8 +64,8 @@ export async function POST(request: NextRequest) {
 
     const safeEmail = emailValidation.data.email;
 
-    // Rate limit: Max 30 resend attempts per email per hour
-    const rateLimit = await checkRateLimit(`resend-otp:${safeEmail}`, 30, 60 * 60 * 1000);
+    // Rate limit: Max 50 resend attempts per email per hour
+    const rateLimit = await checkRateLimit(`resend-otp:${safeEmail}`, 50, 60 * 60 * 1000);
     
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
         const secondsRemaining = getCooldownSecondsRemaining(verification.lastSentAt);
         return NextResponse.json(
           { 
-            error: 'Please wait before requesting a new OTP', 
+            error: `Please wait ${secondsRemaining} second before requesting a new OTP`, 
             cooldownSeconds: secondsRemaining 
           },
           { status: 429 }

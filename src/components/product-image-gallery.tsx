@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Lightbox from 'yet-another-react-lightbox';
 import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
+
 import 'yet-another-react-lightbox/styles.css';
 import 'yet-another-react-lightbox/plugins/thumbnails.css';
 
@@ -28,19 +29,13 @@ export default function ProductImageGallery({ images, productName }: ProductImag
     );
   }
 
-  // Format images for the lightbox
   const slides = images.map((img) => ({
     src: img.url,
     alt: productName,
   }));
 
-  const handleImageClick = (index: number) => {
-    setCurrentIndex(index);
-    setIsLightboxOpen(true);
-  };
-
   const goToPrevious = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent opening lightbox when clicking nav arrows
+    e.stopPropagation(); 
     setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
   };
 
@@ -54,7 +49,7 @@ export default function ProductImageGallery({ images, productName }: ProductImag
       {/* Main Image Container */}
       <div 
         className="relative aspect-square w-full overflow-hidden rounded-lg bg-gray-100 cursor-zoom-in group"
-        onClick={() => handleImageClick(currentIndex)}
+        onClick={() => setIsLightboxOpen(true)} 
       >
         <Image
           src={images[currentIndex].url}
@@ -62,6 +57,7 @@ export default function ProductImageGallery({ images, productName }: ProductImag
           fill
           className="object-cover transition-transform duration-300 group-hover:scale-105"
           priority
+          sizes="(max-width: 768px) 100vw, 50vw" 
         />
 
         {/* Navigation Arrows (Only show if > 1 image) */}
@@ -96,13 +92,13 @@ export default function ProductImageGallery({ images, productName }: ProductImag
         </div>
       </div>
 
-      {/* Thumbnails (Only show if > 1 image) */}
+      {/* Thumbnails */}
       {images.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {images.map((image, index) => (
             <button
-              key={image.id || index} // ✅ Fallback prevents React key warnings
-              onClick={() => handleImageClick(index)}
+              key={image.id || index} 
+              onClick={() => setCurrentIndex(index)} 
               className={`relative shrink-0 aspect-square w-20 overflow-hidden rounded-md border-2 transition-all ${
                 index === currentIndex
                   ? 'border-blue-600 ring-2 ring-blue-100'
@@ -114,6 +110,7 @@ export default function ProductImageGallery({ images, productName }: ProductImag
                 alt={`${productName} - Thumbnail ${index + 1}`}
                 fill
                 className="object-cover"
+                sizes="80px" 
               />
             </button>
           ))}
@@ -133,19 +130,11 @@ export default function ProductImageGallery({ images, productName }: ProductImag
           height: 80,
         }}
         zoom={{
-          maxZoomPixelRatio: 3, // Allow up to 3x zoom
+          maxZoomPixelRatio: 3, 
           zoomInMultiplier: 2,
         }}
         carousel={{
-          finite: false, // Enable infinite looping
-        }}
-        // Optional: Add keyboard navigation hints
-        render={{
-          iconClose: () => (
-            <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          ),
+          finite: false, 
         }}
       />
     </div>

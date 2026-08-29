@@ -8,9 +8,8 @@ import {
   ReactNode,
 } from 'react';
 
-import type { User, AuthContextType, SignupRole, UserRole } from '@/types/auth_types';
+import type { User, AuthContextType } from '@/types/auth_types';
 import { API_PATHS } from '@/constants/api_paths';
-
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -78,12 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (
     email: string,
     password: string,
-    role: Exclude<UserRole, 'ADMIN'>
+    firstName: string,
+    lastName: string,
+    role: 'CUSTOMER' | 'BUSINESS_OWNER',
+    tenantName?: string,
+    tenantSlug?: string
   ) => {
     const response = await fetch(API_PATHS.auth.signup, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, role }),
+      body: JSON.stringify({ email, password, firstName, lastName, role, tenantName, tenantSlug }),
     });
 
     if (!response.ok) {
@@ -92,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const data = await response.json();
-    setUser(data.user);
+    
   };
 
   const logout = async () => {

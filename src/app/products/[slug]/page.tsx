@@ -6,6 +6,7 @@ import { safeFetch } from '@/lib/api-error';
 import type { Product } from '@/types/product_types';
 import CustomErrorDisplay from '@/components/custom-error-display';
 import ProductImageGallery from '@/components/product-image-gallery';
+import AddToCartSection from '@/components/add-to-cart-section';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,17 +93,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
                 </div>
               </div>
 
-              {/* Add to Cart Button (We will wire this up next!) */}
-              <button
-                disabled={product.stock === 0}
-                className={`w-full px-6 py-3 rounded-md text-base font-semibold transition-colors ${
-                  product.stock === 0 
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                }`}
-              >
-                {product.stock === 0 ? 'Sold Out' : 'Add to Cart'}
-              </button>
+              <AddToCartSection product={product} />
             </div>
           </div>
         </div>
