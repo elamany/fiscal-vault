@@ -1,46 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { CartState, CartItem, CartProduct } from '@/types/cart_types';
 
-// Define strict types for our cart data
-export interface CartTenant {
-  id: string;
-  name: string;
-  slug: string;
-}
-
-export interface CartProduct {
-  id: string;
-  name: string;
-  price: string | number; //Prisma Decimal often serializes as string
-  stock: number;
-  tenant: CartTenant | null;
-  images: { url: string }[];
-}
-
-export interface CartItem {
-  productId: string;
-  quantity: number;
-  product: CartProduct;
-  cartItemId?: string; // Optional: only exists when synced from the database
-}
-
-interface CartState {
-  items: CartItem[];
-  addItem: (product: CartProduct, quantity: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  clearCart: () => void;
-  setItems: (items: CartItem[]) => void; // Used for DB sync
-  getTotal: () => number;
-}
-
-//  Create the store with localStorage persistence
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       items: [],
       
-      addItem: (product, quantity) => {
+      addItem: (product: CartProduct, quantity: number) => {
         set((state) => {
           const existingItem = state.items.find((item) => item.productId === product.id);
           if (existingItem) {
@@ -58,13 +25,13 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      removeItem: (productId) => {
+      removeItem: (productId: string) => {
         set((state) => ({
           items: state.items.filter((item) => item.productId !== productId),
         }));
       },
 
-      updateQuantity: (productId, quantity) => {
+      updateQuantity: (productId: string, quantity: number) => {
         set((state) => ({
           items: state.items.map((item) =>
             item.productId === productId ? { ...item, quantity } : item
@@ -74,7 +41,28 @@ export const useCartStore = create<CartState>()(
 
       clearCart: () => set({ items: [] }),
 
-      setItems: (items) => set({ items }),
+      setItems: (items: CartItem[]) => set({ items }),
+
+      //  Merge local anonymous cart with database cart on login
+      mergeItems: (dbItems: CartItem[]) => {
+        set((state) => {
+          const merged = [...dbItems];
+          // For each local item, check if it already exists in the DB items
+          state.items.forEach((localItem) => {
+            const existingInDb = merged.find((item) => item.productId === localItem.productId);
+            
+            if (existingInDb) {
+              // Item exists in DB: add the local quantity to the DB quantity
+              existingInDb.quantity += localItem.quantity;
+            } else {
+              // Item not in DB: add the local item to the merged array
+              merged.push(localItem);
+            }
+          });
+          
+          return { items: merged };
+        });
+      },
 
       getTotal: () => {
         return get().items.reduce((total, item) => {

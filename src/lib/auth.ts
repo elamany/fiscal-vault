@@ -3,14 +3,8 @@ import { prisma } from './db';
 import { verifyAccessToken } from './jwt';
 import { getAccessToken } from './cookies';
 import type { JWTPayload } from './jwt';
+import { AuthenticatedUser } from '@/types/auth_types';
 
-export interface AuthenticatedUser {
-  id: string;
-  email: string;
-  role: 'CUSTOMER' | 'BUSINESS_OWNER';
-  tenantId: string | null;
-  isEmailVerified: boolean;
-}
 
 export interface BusinessOwner extends Omit<AuthenticatedUser, 'role' | 'tenantId'> {
   role: 'BUSINESS_OWNER';
