@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle, Eye, EyeOff, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { useRedirectIfAuth } from '@/hooks/use-auth-redirects';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,19 +13,22 @@ export default function LoginPage() {
   const redirectUrl = searchParams.get('redirect') || '/';
   
   const { login } = useAuth();
+  useRedirectIfAuth('/');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false); 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
       router.push(redirectUrl);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid email or password';
@@ -36,7 +40,6 @@ export default function LoginPage() {
 
   return (
     <>
-      {/* Header / Logo Area */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-blue-600 mb-4 shadow-lg shadow-blue-600/20">
           <Mail className="h-6 w-6 text-white" />
@@ -47,7 +50,6 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* High-UX Card */}
       <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8 sm:p-10">
         {error && (
           <div className="mb-6 flex items-start gap-3 rounded-xl bg-red-50 border border-red-100 p-4">
@@ -81,7 +83,7 @@ export default function LoginPage() {
                 Password
               </label>
               <Link 
-                href="/auth/forgot-password" 
+                href="/forgot-password" 
                 className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
               >
                 Forgot password?
@@ -108,6 +110,29 @@ export default function LoginPage() {
             </div>
           </div>
 
+          <div className="flex items-center">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={rememberMe}
+              onClick={() => setRememberMe(!rememberMe)}
+              className={`flex h-5 w-5 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                rememberMe
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-gray-300 bg-white hover:border-gray-400'
+              }`}
+            >
+              {rememberMe && <Check className="h-3.5 w-3.5" />}
+            </button>
+            <label 
+              htmlFor="remember-me" 
+              className="ml-2 block text-sm text-gray-700 cursor-pointer select-none"
+              onClick={() => setRememberMe(!rememberMe)}
+            >
+              Remember me for 30 days
+            </label>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -127,7 +152,7 @@ export default function LoginPage() {
         <div className="mt-8 text-center">
           <p className="text-sm text-gray-500">
             Don&apos;t have an account?{' '}
-            <Link href="/auth/signup" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+            <Link href="/signup" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
               Create one for free
             </Link>
           </p>

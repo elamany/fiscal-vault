@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Loader2, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { API_PATHS } from '@/constants/api_paths';
+import { useRedirectIfAuth } from '@/hooks/use-auth-redirects';
 
 interface VerifyEmailClientProps {
   initialEmail: string;
@@ -13,6 +14,7 @@ interface VerifyEmailClientProps {
 
 export default function VerifyEmailClient({ initialEmail }: VerifyEmailClientProps) {
   const router = useRouter();
+  useRedirectIfAuth('/dashboard');
   const [email, setEmail] = useState(initialEmail);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
@@ -94,7 +96,7 @@ export default function VerifyEmailClient({ initialEmail }: VerifyEmailClientPro
       
       // Redirect to login after successful verification
       setTimeout(() => {
-        router.push('/auth/login');
+        router.push('/login');
       }, 2000);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Verification failed';
@@ -225,7 +227,7 @@ export default function VerifyEmailClient({ initialEmail }: VerifyEmailClientPro
         </div>
 
         <div className="mt-6 pt-6 border-t border-gray-100 text-center">
-          <Link href="/auth/signup" className="inline-flex items-center text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+          <Link href="/signup" className="inline-flex items-center text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors">
             <ArrowLeft className="h-4 w-4 mr-1.5" />
             Back to registration
           </Link>

@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Lock, Loader2, AlertCircle, CheckCircle2, ArrowLeft, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { API_PATHS } from '@/constants/api_paths';
+import { useRedirectIfAuth } from '@/hooks/use-auth-redirects';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  useRedirectIfAuth('/dashboard');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,7 +23,7 @@ export default function ResetPasswordPage() {
 
     const currentToken = sessionStorage.getItem('reset_token');
     if (!currentToken) {
-      router.push('/auth/forgot-password');
+      router.push('/forgot-password');
       return;
     }
 
@@ -56,7 +58,7 @@ export default function ResetPasswordPage() {
 
       // Redirect to login after 3 seconds
       setTimeout(() => {
-        router.push('/auth/login');
+        router.push('/login');
       }, 3000);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Reset failed';
@@ -180,7 +182,7 @@ export default function ResetPasswordPage() {
         </form>
 
         <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-          <Link href="/auth/login" className="inline-flex items-center text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+          <Link href="/login" className="inline-flex items-center text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors">
             <ArrowLeft className="h-4 w-4 mr-1.5" />
             Back to login
           </Link>

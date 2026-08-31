@@ -25,6 +25,12 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
@@ -80,15 +86,20 @@ model Product {
   description String?
   price       Decimal @db.Decimal(10, 2)
   stock       Int     @default(0)
+  status ProductStatus @default(DRAFT) 
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
 
   tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoiceItems InvoiceItem[]
   images       ProductImage[]
   orderItems   OrderItem[]
   cartItems    CartItem[]
+
+  
+  @@index([status]) 
 
   @@index([tenantId])
 }

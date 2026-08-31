@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json(
       {
         message: 'Password reset successfully. You can now log in with your new password.',
-        redirectTo: '/auth/login',
+        redirectTo: '/login',
       },
       { status: 200 }
     );

@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Loader2, AlertCircle, Eye, EyeOff, ShoppingBag, Store, User, Building2 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { useRedirectIfAuth } from '@/hooks/use-auth-redirects';
 
 export default function SignupPage() {
   const router = useRouter();
   const { signup } = useAuth();
-  
+  useRedirectIfAuth('/dashboard');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -156,7 +157,7 @@ export default function SignupPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">Already have an account? <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">Sign in</Link></p>
+          <p className="text-sm text-gray-600">Already have an account? <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">Sign in</Link></p>
         </div>
       </div>
     </>

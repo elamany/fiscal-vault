@@ -1,3 +1,4 @@
+// src/contexts/auth-context.tsx
 'use client';
 
 import {
@@ -22,8 +23,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function loadUser() {
       try {
-        const response = await fetch(API_PATHS.auth.me);
+        // add credentials: 'include' to ensure cookies are sent
+        const response = await fetch(API_PATHS.auth.me, {
+          credentials: 'include',
+        });
+        
         if (!response.ok) return;
+        
         const data = await response.json();
         if (!cancelled) {
           setUser(data.user);
@@ -46,7 +52,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const response = await fetch(API_PATHS.auth.me);
+      const response = await fetch(API_PATHS.auth.me, {
+        credentials: 'include', 
+      });
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
@@ -58,11 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, rememberMe: boolean = false) => {
     const response = await fetch(API_PATHS.auth.login, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      credentials: 'include', 
+      body: JSON.stringify({ email, password, rememberMe }), 
     });
 
     if (!response.ok) {
@@ -86,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await fetch(API_PATHS.auth.signup, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', 
       body: JSON.stringify({ email, password, firstName, lastName, role, tenantName, tenantSlug }),
     });
 
@@ -95,11 +105,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const data = await response.json();
-    
+    // Optional: setUser(data.user) if your signup API returns the user immediately
   };
 
   const logout = async () => {
-    await fetch(API_PATHS.auth.logout, { method: 'POST' });
+    await fetch(API_PATHS.auth.logout, { 
+      method: 'POST',
+      credentials: 'include', 
+    });
     setUser(null);
   };
 

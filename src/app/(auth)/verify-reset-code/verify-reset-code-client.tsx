@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {  Loader2, AlertCircle, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { API_PATHS } from '@/constants/api_paths';
+import { useRedirectIfAuth } from '@/hooks/use-auth-redirects';
 
 interface VerifyResetCodeClientProps {
   initialEmail: string;
@@ -12,6 +13,7 @@ interface VerifyResetCodeClientProps {
 
 export default function VerifyResetCodeClient({ initialEmail }: VerifyResetCodeClientProps) {
   const router = useRouter();
+  useRedirectIfAuth('/dashboard');
   const [email, setEmail] = useState(initialEmail);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
@@ -23,7 +25,7 @@ export default function VerifyResetCodeClient({ initialEmail }: VerifyResetCodeC
 
   useEffect(() => {
     if (!email) {
-      router.push('/auth/forgot-password');
+      router.push('/forgot-password');
     }
   }, [email, router]);
 
@@ -93,7 +95,7 @@ export default function VerifyResetCodeClient({ initialEmail }: VerifyResetCodeC
 
       // Store token in sessionStorage and redirect to reset password
       sessionStorage.setItem('reset_token', data.token);
-      router.push('/auth/reset-password');
+      router.push('/reset-password');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Verification failed';
       setError(errorMessage);
@@ -208,7 +210,7 @@ export default function VerifyResetCodeClient({ initialEmail }: VerifyResetCodeC
         </div>
 
         <div className="mt-6 pt-6 border-t border-gray-100 text-center">
-          <Link href="/auth/forgot-password" className="inline-flex items-center text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+          <Link href="/forgot-password" className="inline-flex items-center text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors">
             <ArrowLeft className="h-4 w-4 mr-1.5" />
             Try a different email
           </Link>
