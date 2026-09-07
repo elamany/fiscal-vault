@@ -30,8 +30,8 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
       select: {
         id: true,
         email: true,
-        firstName: true,   // ✅ Matches AuthenticatedUser
-        lastName: true,    // ✅ Matches AuthenticatedUser
+        firstName: true,   
+        lastName: true,    
         role: true,
         tenantId: true,
         isEmailVerified: true,

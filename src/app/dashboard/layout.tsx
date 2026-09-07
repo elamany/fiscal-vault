@@ -15,10 +15,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const { user, logout, loading } = useAuth();
   
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile
-  const [isCollapsed, setIsCollapsed] = useState(false); // Desktop
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Redirect if not a business owner
+  // Redirect if not authenticated or not a business owner
   useEffect(() => {
     if (!loading && (!user || user.role !== 'BUSINESS_OWNER')) {
       router.push('/profile');
@@ -30,6 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/');
   };
 
+  // Show loading spinner while checking auth
   if (loading || !user || user.role !== 'BUSINESS_OWNER') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -54,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="h-screen flex overflow-hidden bg-gray-50">
-      
+      {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 z-40 bg-gray-900/80 backdrop-blur-sm lg:hidden"
@@ -62,6 +63,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
+      {/* Sidebar */}
       <aside 
         className={`fixed inset-y-0 left-0 z-50 bg-gray-900 border-r border-gray-800 transform transition-all duration-300 ease-in-out 
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
@@ -88,7 +90,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
 
-          {/* Navigation (Scrollable if too many items) */}
+          {/* Navigation */}
           <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
             {navigation.map((item) => {
               const Icon = item.icon;
@@ -129,11 +131,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="border-t border-gray-800 p-3 shrink-0">
             <div className={`flex items-center gap-3 px-2 py-2 mb-2 ${isCollapsed ? 'lg:justify-center' : ''}`}>
               <div className="h-9 w-9 min-w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-md shadow-blue-600/20">
-                {user.email.charAt(0)}
+                {user.firstName.charAt(0).toUpperCase()}
               </div>
               {!isCollapsed && (
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">
+                  <p className="text-sm font-medium text-white truncate capitalize">
                     {user.firstName} {user.lastName}
                   </p>
                   <p className="text-xs text-gray-400 truncate">{user.email}</p>
@@ -154,7 +156,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
+      {/* Main content wrapper */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
         <header className="shrink-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200">
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
             <button
@@ -176,6 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
+        {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {children}
         </main>

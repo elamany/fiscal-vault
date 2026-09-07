@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (stockFilter === 'IN_STOCK') {
-      whereClause.stock = { gt: 5 };
+      whereClause.stock = { gt: 0 };
     } else if (stockFilter === 'LOW_STOCK') {
       whereClause.stock = { gt: 0, lte: 5 };
     } else if (stockFilter === 'OUT_OF_STOCK') {

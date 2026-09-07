@@ -53,7 +53,7 @@ export default function SignupPage() {
 
     try {
       await signup(email, password, firstName.trim(), lastName.trim(), role, tenantName.trim() || undefined, tenantSlug.trim() || undefined);
-      router.push('/auth/verify-email'); 
+      router.push('/verify-email'); 
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create account';
       setError(errorMessage);

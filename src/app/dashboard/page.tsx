@@ -1,29 +1,12 @@
 'use client';
 
-import { useAuth } from '@/contexts/auth-context';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { Package, ClipboardList, TrendingUp, Boxes, PlusCircle } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
 
 export default function DashboardHomePage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && (!user || user.role !== 'BUSINESS_OWNER')) {
-      router.push('/profile');
-    }
-  }, [user, loading, router]);
-
-  if (loading || !user) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
+   const { user } = useAuth();
+  
   const stats = [
     {
       name: 'Total Products',
@@ -82,15 +65,14 @@ export default function DashboardHomePage() {
     <div>
       {/* Welcome header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Welcome back, {user.firstName}!
+        <h1 className="text-3xl font-bold text-gray-900 capitalize">
+          Welcome back, {user?.firstName}!!
         </h1>
         <p className="mt-2 text-gray-600">
           Here&apos;s what&apos;s happening with your store today.
         </p>
       </div>
 
-      {/* Stats grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {stats.map((stat) => {
           const Icon = stat.icon;
@@ -113,7 +95,6 @@ export default function DashboardHomePage() {
         })}
       </div>
 
-      {/* Quick actions */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
