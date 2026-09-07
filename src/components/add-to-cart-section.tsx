@@ -33,7 +33,7 @@ export default function AddToCartSection({ product }: AddToCartSectionProps) {
         await updateCartItem.mutateAsync({
           productId: product.id,
           cartItemId: existingItem.cartItemId,
-          quantity: quantity, // Explicitly sets the DB quantity to this number
+          quantity: quantity, 
         });
       } catch (error) {
         console.error('Failed to update cart:', error);

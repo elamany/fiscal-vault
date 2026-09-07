@@ -130,9 +130,9 @@ function ProductCard({ product, isLoggedIn, isPriority }: { product: Product; is
             {product.name}
           </h3>
         </Link>
-        <p className="mt-1 text-sm text-gray-600 line-clamp-2 min-h-10">
+        {/* <p className="mt-1 text-sm text-gray-600 line-clamp-2 min-h-10">
           {product.description || 'No description available.'}
-        </p>
+        </p> */}
 
         <div className="mt-4 flex items-end justify-between">
           <div>
