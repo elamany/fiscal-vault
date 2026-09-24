@@ -18,7 +18,6 @@ FiscalVault empowers business owners to manage their storefronts, products, and 
 ![Resend](https://img.shields.io/badge/Resend-Email_API-000000?style=for-the-badge&logo=resend)
 ![Zod](https://img.shields.io/badge/Zod-Validation-3E67B1?style=for-the-badge)
 
-*(Note: If your architecture also includes Django/Flutter as a mobile app or separate backend, you can easily add those badges back in!)*
 
 ---
 
