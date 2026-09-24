@@ -2,19 +2,16 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useCart } from '@/hooks/use-cart';
-import { useUpdateCartItem } from '@/hooks/use-cart';
-import { useRemoveFromCart } from '@/hooks/use-cart';
+import { useUpdateCartItem, useRemoveFromCart } from '@/hooks/use-cart';
 import { useCartStore } from '@/lib/store';
 import type { CartItem } from '@/types/cart_types';
 
 export default function CartPage() {
-  const { data: cartData, isLoading } = useCart();
+  
+  const items = useCartStore((state) => state.items);
+  
   const updateCartItem = useUpdateCartItem();
   const removeFromCart = useRemoveFromCart();
-  
-  // Fallback to local store if query is still loading or user is anonymous
-  const items = cartData?.items || useCartStore.getState().items;
 
   // Group items by store/tenant
   const itemsByStore = items.reduce((acc, item) => {
@@ -49,19 +46,7 @@ export default function CartPage() {
     });
   };
 
-  // Loading State
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-        </div>
-      </div>
-    );
-  }
-
-  // Empty State
+  // Empty State (No loading state needed, Zustand is instant)
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">

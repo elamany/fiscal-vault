@@ -1,20 +1,13 @@
+// src/app/api/dashboard/products/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireBusinessOwner } from '@/lib/auth';
-import { Prisma } from '../../../../generated/prisma/client';
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { z } from 'zod';
+import { Prisma } from '@/generated/prisma/client';
+import { sanitizeHtmlServer } from '@/lib/sanitize-backend';
 
-const updateProductSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  description: z.string().max(2000).optional(),
-  price: z.number().positive().optional(),
-  imageUrls: z.array(z.url()).max(10).optional(),
-  stock: z.number().int().min(0).optional(),
-});
-/**
- * GET /api/products/:id
- * Business owner: Only if the product belongs to their tenant
- */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,28 +17,42 @@ export async function GET(
     const { id } = await params;
 
     const product = await prisma.product.findFirst({
-      where: { id, tenantId: user.tenantId },
+      where: {
+        id,
+        tenantId: user.tenantId,
+      },
       include: {
-        images: { orderBy: { order: 'asc' } },
+        images: {
+          orderBy: { order: 'asc' },
+        },
       },
     });
 
     if (!product) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({ product });
+    return NextResponse.json({ product }, { status: 200 });
   } catch (error) {
-    if (error instanceof Response) return error;
-    console.error('Get product error:', error);
-    return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 });
+    console.error('Fetch product error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch product' },
+      { status: 500 }
+    );
   }
 }
 
-/**
- * PATCH /api/products/:id
- * Business owner: Only if the product belongs to their tenant
- */
+const updateProductSchema = z.object({
+  name: z.string().min(1, 'Product name is required').max(200),
+  description: z.string().max(10000).optional().nullable(),
+  price: z.coerce.number().positive('Price must be greater than 0'),
+  stock: z.coerce.number().int().min(0, 'Stock cannot be negative'),
+  status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']),
+});
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -53,61 +60,123 @@ export async function PATCH(
   try {
     const user = await requireBusinessOwner();
     const { id } = await params;
+    const formData = await request.formData();
 
-    const body = await request.json();
-    const validation = updateProductSchema.safeParse(body);
+    const product = await prisma.product.findFirst({
+      where: {
+        id,
+        tenantId: user.tenantId,
+      },
+    });
 
-    if (!validation.success) {
+    if (!product) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.flatten() },
+        { error: 'Product not found' },
+        { status: 404 }
+      );
+    }
+
+    const productDataRaw = formData.get('data');
+    if (!productDataRaw || typeof productDataRaw !== 'string') {
+      return NextResponse.json(
+        { error: 'Product data is required' },
         { status: 400 }
       );
     }
 
-    const existingProduct = await prisma.product.findFirst({
-      where: { id, tenantId: user.tenantId },
-    });
-
-    if (!existingProduct) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    let productData;
+    try {
+      productData = JSON.parse(productDataRaw);
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid product data format' },
+        { status: 400 }
+      );
     }
 
-    const { name, description, price, imageUrls, stock } = validation.data;
+    const validation = updateProductSchema.safeParse(productData);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: validation.error.issues[0].message },
+        { status: 400 }
+      );
+    }
 
-    // Update product in a transaction
-    const product = await prisma.$transaction(async (tx) => {
-      // Update product fields
-      const updatedProduct = await tx.product.update({
+    const { name, description, price, stock, status } = validation.data;
+
+    const updateData: Prisma.ProductUpdateInput = {
+      name,
+      price,
+      stock,
+      status,
+      description: description ? sanitizeHtmlServer(description) : null,
+    };
+
+    const files: File[] = [];
+    formData.getAll('files').forEach((file) => {
+      if (file instanceof File) {
+        files.push(file);
+      }
+    });
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    const maxSize = 5 * 1024 * 1024;
+
+    for (const file of files) {
+      if (!allowedTypes.includes(file.type)) {
+        return NextResponse.json(
+          { error: `Invalid file type: ${file.name}` },
+          { status: 400 }
+        );
+      }
+      if (file.size > maxSize) {
+        return NextResponse.json(
+          { error: `File too large: ${file.name}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const updatedProduct = await prisma.$transaction(async (tx) => {
+      const updated = await tx.product.update({
         where: { id },
-        data: {
-          ...(name !== undefined && { name }),
-          ...(description !== undefined && { description }),
-          ...(price !== undefined && { price: price.toFixed(2) }),
-          ...(stock !== undefined && { stock }),
-        },
+        data: updateData,
       });
 
-      // If imageUrls provided, replace all images
-      if (imageUrls !== undefined) {
-        // Delete old images
+      if (files.length > 0) {
         await tx.productImage.deleteMany({
           where: { productId: id },
         });
 
-        // Create new images
-        if (imageUrls.length > 0) {
-          await tx.productImage.createMany({
-            data: imageUrls.map((url, index) => ({
-              productId: id,
-              url,
-              order: index,
-            })),
-          });
+        const uploadDir = join(process.cwd(), 'public', 'uploads', 'images');
+        await mkdir(uploadDir, { recursive: true });
+
+        const imageUrls: string[] = [];
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const timestamp = Date.now();
+          const randomString = Math.random().toString(36).substring(2, 8);
+          const fileExtension = file.name.split('.').pop() || 'jpg';
+          const fileName = `${timestamp}-${randomString}-${i}.${fileExtension}`;
+          const filePath = join(uploadDir, fileName);
+
+          const bytes = await file.arrayBuffer();
+          const buffer = Buffer.from(bytes);
+          await writeFile(filePath, buffer);
+
+          imageUrls.push(`/uploads/images/${fileName}`);
         }
+
+        await tx.productImage.createMany({
+          data: imageUrls.map((url, index) => ({
+            productId: id,
+            url,
+            order: index,
+          })),
+        });
       }
 
-      // Return updated product with images
-      return tx.product.findUnique({
+      return await tx.product.findUnique({
         where: { id },
         include: {
           images: { orderBy: { order: 'asc' } },
@@ -115,20 +184,19 @@ export async function PATCH(
       });
     });
 
-    return NextResponse.json({ product });
+    return NextResponse.json(
+      { message: 'Product updated successfully', product: updatedProduct },
+      { status: 200 }
+    );
   } catch (error) {
-    if (error instanceof Response) return error;
     console.error('Update product error:', error);
-    return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to update product' },
+      { status: 500 }
+    );
   }
 }
 
-
-/**
- * DELETE /api/products/:id
- * Business owner: Only if the product belongs to their tenant
- * AND the product isn't referenced in any invoices (data integrity)
- */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -137,34 +205,34 @@ export async function DELETE(
     const user = await requireBusinessOwner();
     const { id } = await params;
 
-    const existingProduct = await prisma.product.findFirst({
-      where: { id, tenantId: user.tenantId },
+    const product = await prisma.product.findFirst({
+      where: {
+        id,
+        tenantId: user.tenantId,
+      },
     });
 
-    if (!existingProduct) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    if (!product) {
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
+      );
     }
 
-    try {
-      // onDelete: Cascade will automatically delete ProductImage records
-      await prisma.product.delete({ where: { id } });
-    } catch (deleteError) {
-      if (
-        deleteError instanceof Prisma.PrismaClientKnownRequestError &&
-        deleteError.code === 'P2003'
-      ) {
-        return NextResponse.json(
-          { error: 'Cannot delete product: it is referenced in existing invoices' },
-          { status: 409 }
-        );
-      }
-      throw deleteError;
-    }
+    await prisma.product.update({
+      where: { id },
+      data: { status: 'ARCHIVED' },
+    });
 
-    return NextResponse.json({ message: 'Product deleted successfully' });
+    return NextResponse.json(
+      { message: 'Product archived successfully' },
+      { status: 200 }
+    );
   } catch (error) {
-    if (error instanceof Response) return error;
-    console.error('Delete product error:', error);
-    return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 });
+    console.error('Archive product error:', error);
+    return NextResponse.json(
+      { error: 'Failed to archive product' },
+      { status: 500 }
+    );
   }
 }

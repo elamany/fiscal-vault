@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { verifyPassword } from '@/lib/password';
-import { generateAccessToken, generateRefreshToken, type JWTPayload } from '@/lib/jwt';
-import { setAuthCookies } from '@/lib/cookies';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { verifyPassword } from '@/lib/password'; 
+import { generateAccessToken, generateRefreshToken } from '@/lib/jwt';
 
 const loginSchema = z.object({
-  email: z.email(),
-  password: z.string().min(6),
+  email: z.email('Invalid email address').transform((val) => val.toLowerCase()),
+  password: z.string().min(1, 'Password is required'),
+  rememberMe: z.boolean().optional().default(false),
 });
 
 export async function POST(request: NextRequest) {
@@ -18,57 +17,28 @@ export async function POST(request: NextRequest) {
     const validation = loginSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input' },
+        { error: 'Invalid input', details: validation.error.flatten() },
         { status: 400 }
       );
     }
 
-    const { email, password } = validation.data;
+    const { email, password, rememberMe } = validation.data;
 
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        passwordHash: true,
+        role: true,
+        tenantId: true,
+        isEmailVerified: true,
+      },
+    });
 
-    // Get client IP (works behind proxies)
-    const ip = request.headers.get('x-forwarded-for') || 
-               request.headers.get('x-real-ip') || 
-               'unknown';
-    
-    // 1. Rate limit by IP: 10 attempts per 15 minutes
-    const ipRateLimit = await checkRateLimit(`login:ip:${ip}`, 10, 15 * 60 * 1000);
-    
-    if (!ipRateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Too many login attempts from your network. Please try again later.' },
-        { 
-          status: 429, 
-          headers: { 
-            'Retry-After': ipRateLimit.retryAfter?.toString() || '900',
-            'X-RateLimit-Limit': ipRateLimit.limit.toString(),
-            'X-RateLimit-Remaining': '0',
-          } 
-        }
-      );
-    }
-
-    // 2. Rate limit by email: 5 attempts per 15 minutes
-    const emailRateLimit = await checkRateLimit(`login:email:${email}`, 5, 15 * 60 * 1000);
-    
-    if (!emailRateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Too many login attempts for this account. Please try again later or reset your password.' },
-        { 
-          status: 429, 
-          headers: { 
-            'Retry-After': emailRateLimit.retryAfter?.toString() || '900',
-            'X-RateLimit-Limit': emailRateLimit.limit.toString(),
-            'X-RateLimit-Remaining': '0',
-          } 
-        }
-      );
-    }
-
-
-    // Find user by email
-    const user = await prisma.user.findUnique({ where: { email } });
-    
     if (!user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -76,8 +46,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const isValidPassword = await verifyPassword(password, user.passwordHash);
-    if (!isValidPassword) {
+    // Verify password
+    const isValid = await verifyPassword(password, user.passwordHash);
+    if (!isValid) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
@@ -85,36 +56,56 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate tokens
-    const payload: JWTPayload = {
+    const accessToken = await generateAccessToken({
       userId: user.id,
-      tenantId: user.tenantId,
       role: user.role,
-    };
-
-    const accessToken = await generateAccessToken(payload);
-    const refreshToken = await generateRefreshToken(payload);
-
-    // Save refresh token for future revocation
-    await prisma.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
+      tenantId: user.tenantId,
     });
 
-    // Set secure cookies
-    await setAuthCookies(accessToken, refreshToken);
-
-    return NextResponse.json({
-      message: 'Login successful',
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        tenantId: user.tenantId,
-      },
+    const refreshToken = await generateRefreshToken({
+      userId: user.id,
+      role: user.role,
+      tenantId: user.tenantId,
     });
+
+    // Determine cookie duration based on "Remember me"
+    const maxAge = rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60; // 30 days vs 7 days
+
+    const response = NextResponse.json(
+      {
+        message: 'Login successful',
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          tenantId: user.tenantId,
+          isEmailVerified: user.isEmailVerified,
+        },
+      },
+      { status: 200 }
+    );
+
+    // Set Access Token Cookie
+    response.cookies.set('access_token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 15 * 60, // Access token always short-lived (15 mins)
+    });
+
+    // Set Refresh Token Cookie
+    response.cookies.set('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: maxAge, // Dynamic duration (30 days or 7 days)
+    });
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       {
         message: 'Code verified successfully',
         token: resetToken,
-        redirectTo: '/auth/reset-password',
+        redirectTo: '/reset-password',
       },
       { status: 200 }
     );

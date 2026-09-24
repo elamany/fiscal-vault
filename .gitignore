@@ -53,3 +53,5 @@ next-env.d.ts
 .cursor
 .devin
 .windsurf
+
+/public/uploads

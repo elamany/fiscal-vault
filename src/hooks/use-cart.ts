@@ -1,9 +1,20 @@
-// src/hooks/use-cart.ts
+import { useEffect } from 'react'; 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_PATHS } from '@/constants/api_paths';
 import { useCartStore } from '@/lib/store';
 import { useAuth } from '@/contexts/auth-context';
-import type {  CartProduct, CartResponse } from '@/types/cart_types';
+import type { CartProduct, CartItem } from '@/types/cart_types';
+
+interface DbCartApiResponse {
+  cart: {
+    items: {
+      id: string;          
+      productId: string;
+      quantity: number;
+      product: CartProduct;
+    }[];
+  } | null;
+}
 
 // Fetch cart from database (only for logged-in users)
 export function useCart() {
@@ -17,7 +28,7 @@ export function useCart() {
       const response = await fetch(API_PATHS.cart.base);
       if (!response.ok) throw new Error('Failed to fetch cart');
       
-      const data: CartResponse = await response.json();
+      const data: DbCartApiResponse = await response.json();
       return data.cart || { items: [] };
     },
     enabled: !!user, // Only fetch if user is logged in
@@ -153,28 +164,69 @@ export function useRemoveFromCart() {
   });
 }
 
-// Sync cart on login (merge local cart with DB cart)
 export function useSyncCartOnLogin() {
   const { user } = useAuth();
-  const { mergeItems } = useCartStore();
+  const { setItems, clearCart } = useCartStore();
 
+  //  Use useEffect to clear cart IMMEDIATELY when user logs out
+  useEffect(() => {
+    if (!user) {
+      clearCart(); // This updates Zustand state AND clears localStorage via persist middleware
+    }
+  }, [user, clearCart]);
+
+  //  Use useQuery ONLY for merging/fetching when user logs IN
   useQuery({
-    queryKey: ['cart-sync'],
+    queryKey: ['cart-sync', user?.id],
     queryFn: async () => {
-      if (!user) return { items: [] };
+      if (!user) return { items: [] }; // Safety fallback
       
-      const response = await fetch(API_PATHS.cart.base);
-      if (!response.ok) throw new Error('Failed to fetch cart');
+      const guestItems = useCartStore.getState().items;
       
-      const data: CartResponse = await response.json();
-      const dbCart = data.cart || { items: [] };
+      if (guestItems.length > 0) {
+        const payload = guestItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity
+        }));
+
+        const mergeResponse = await fetch('/api/cart/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ items: payload }),
+        });
+
+        if (mergeResponse.ok) {
+          const data: DbCartApiResponse = await mergeResponse.json();
+          
+          const mergedDbItems: CartItem[] = (data.cart?.items || []).map((dbItem) => ({
+            productId: dbItem.productId,
+            quantity: dbItem.quantity,
+            product: dbItem.product,
+            cartItemId: dbItem.id,
+          }));
+          
+          setItems(mergedDbItems);
+        }
+      } else {
+        const response = await fetch('/api/cart', { credentials: 'include' });
+        if (response.ok) {
+          const data: DbCartApiResponse = await response.json();
+          
+          const dbItems: CartItem[] = (data.cart?.items || []).map((dbItem) => ({
+            productId: dbItem.productId,
+            quantity: dbItem.quantity,
+            product: dbItem.product,
+            cartItemId: dbItem.id,
+          }));
+          
+          setItems(dbItems);
+        }
+      }
       
-      // Merge with local Zustand items
-      mergeItems(dbCart.items);
-      
-      return dbCart;
+      return { success: true };
     },
-    enabled: !!user,
-    staleTime: 0, // Always refetch on login
+    enabled: !!user, // Only runs when user is logged in
+    staleTime: 0,    // Always runs fresh when user state changes to logged in
   });
 }
